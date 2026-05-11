@@ -13,7 +13,7 @@ object Main extends IOApp.Simple:
     // db setup
     Database.makeTransactor.use { xa =>
 
-      val userEndpoints = new UserEndpoint()
+      val userEndpoints = new UserEndpoint(xa)
 
       val routes = HttpRouter.makeRoutes(userEndpoints.all)
 
