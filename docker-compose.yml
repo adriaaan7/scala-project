@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: travel_postgres
+    environment:
+      POSTGRES_USER: planner
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: travelplanner
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  app:
+    build: .
+    container_name: travel_api
+    ports:
+      - "8080:8080"
+    depends_on:
+      - db
+    volumes:
+      - ~/.sbt:/root/.sbt
+      - ~/.cache/coursier:/root/.cache/coursier
+
+volumes:
+  postgres_data:
