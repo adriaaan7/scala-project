@@ -4,7 +4,7 @@ import org.http4s.ember.server.EmberServerBuilder
 import doobie.implicits.*
 
 import db.Database
-import api.{HttpRouter, UserEndpoint}
+import api.{HttpRouter, UserEndpoint, AuthEndpoint}
 
 object Main extends IOApp.Simple:
 
@@ -14,8 +14,11 @@ object Main extends IOApp.Simple:
     Database.makeTransactor.use { xa =>
 
       val userEndpoints = new UserEndpoint(xa)
+      val authEndpoints = new AuthEndpoint(xa)
 
-      val routes = HttpRouter.makeRoutes(userEndpoints.all)
+      val allEndpoints = authEndpoints.all ::: userEndpoints.all
+
+      val routes = HttpRouter.makeRoutes(allEndpoints)
 
       for
         _ <- EmberServerBuilder

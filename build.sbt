@@ -28,7 +28,10 @@ libraryDependencies ++= Seq(
   "io.circe" %% "circe-parser"  % circeVersion,
 
   "org.typelevel" %% "log4cats-slf4j" % "2.6.0",
-  "org.slf4j"      % "slf4j-simple"   % "2.0.9"
+  "org.slf4j"      % "slf4j-simple"   % "2.0.9",
+
+  "com.github.jwt-scala" %% "jwt-core" % "9.4.0",
+  "com.github.jwt-scala" %% "jwt-circe" % "9.4.0"
 )
 
 scalacOptions ++= Seq(
