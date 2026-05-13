@@ -5,13 +5,21 @@ services:
     image: postgres:15-alpine
     container_name: travel_postgres
     environment:
-      POSTGRES_USER: planner
+      POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password
-      POSTGRES_DB: travelplanner
+      POSTGRES_DB: postgres
     ports:
       - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - travel-network
 
   app:
     build: .
@@ -19,10 +27,24 @@ services:
     ports:
       - "8080:8080"
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: password
+      DB_NAME: postgres
+      JWT_SECRET: 1c42a5d4c1f301efb955cbdeb73e94e30284b9df0be4dbf3b080119c8fb0a891
+    networks:
+      - travel-network
     volumes:
       - ~/.sbt:/root/.sbt
       - ~/.cache/coursier:/root/.cache/coursier
 
 volumes:
   postgres_data:
+
+networks:
+  travel-network:
+    driver: bridge
