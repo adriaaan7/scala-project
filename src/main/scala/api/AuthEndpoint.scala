@@ -20,6 +20,7 @@ class AuthEndpoint(xa: HikariTransactor[IO]):
       .in(jsonBody[RegisterRequest])
       .out(statusCode(StatusCode.Created).and(jsonBody[User]))
       .errorOut(statusCode.and(jsonBody[ErrorResponse]))
+      .tag("Authentication")
 
   private val registerServerEndpoint: ServerEndpoint[Any, IO] =
     registerEndpoint.serverLogic { req =>
@@ -36,6 +37,7 @@ class AuthEndpoint(xa: HikariTransactor[IO]):
       .in(jsonBody[LoginRequest])
       .out(statusCode(StatusCode.Ok).and(jsonBody[AuthResponse]))
       .errorOut(statusCode.and(jsonBody[ErrorResponse]))
+      .tag("Authentication")
 
   private val loginServerEndpoint: ServerEndpoint[Any, IO] =
     loginEndpoint.serverLogic { req =>
@@ -52,6 +54,7 @@ class AuthEndpoint(xa: HikariTransactor[IO]):
       .in(header[String]("Authorization"))
       .out(statusCode(StatusCode.Ok).and(jsonBody[AuthResponse]))
       .errorOut(statusCode.and(jsonBody[ErrorResponse]))
+      .tag("Authentication")
 
   private val refreshServerEndpoint: ServerEndpoint[Any, IO] =
     refreshEndpoint.serverLogic { authHeader =>
