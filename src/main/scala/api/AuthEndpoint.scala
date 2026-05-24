@@ -26,7 +26,11 @@ class AuthEndpoint(xa: HikariTransactor[IO]):
     registerEndpoint.serverLogic { req =>
       AuthService.register(req.username, req.password, xa).map {
         case Right(user) => Right(user)
-        case Left(error) => Left((StatusCode.Conflict, ErrorResponse("CONFLICT", error)))
+        case Left(error) =>
+          if error == "Username cannot be empty" || error == "Password cannot be empty" then
+            Left((StatusCode.BadRequest, ErrorResponse("BAD_REQUEST", error)))
+          else
+            Left((StatusCode.Conflict, ErrorResponse("CONFLICT", error)))
       }
     }
 
@@ -43,34 +47,44 @@ class AuthEndpoint(xa: HikariTransactor[IO]):
     loginEndpoint.serverLogic { req =>
       AuthService.login(req.username, req.password, xa).map {
         case Right(authResponse) => Right(authResponse)
-        case Left(error) => Left((StatusCode.Unauthorized, ErrorResponse("UNAUTHORIZED", error)))
+        case Left(error) =>
+          if error == "Username cannot be empty" || error == "Password cannot be empty" then
+            Left((StatusCode.BadRequest, ErrorResponse("BAD_REQUEST", error)))
+          else
+            Left((StatusCode.Unauthorized, ErrorResponse("UNAUTHORIZED", error)))
       }
     }
 
-  private val refreshEndpoint: Endpoint[Unit, String, (StatusCode, ErrorResponse), AuthResponse, Any] =
+  private val refreshEndpoint: Endpoint[Unit, Option[String], (StatusCode, ErrorResponse), AuthResponse, Any] =
     endpoint
       .post
       .in("auth" / "refresh")
-      .in(header[String]("Authorization"))
+      .in(header[Option[String]]("Authorization"))
       .out(statusCode(StatusCode.Ok).and(jsonBody[AuthResponse]))
       .errorOut(statusCode.and(jsonBody[ErrorResponse]))
       .tag("Authentication")
 
   private val refreshServerEndpoint: ServerEndpoint[Any, IO] =
-    refreshEndpoint.serverLogic { authHeader =>
-      (for
-        token <- JwtService.getTokenFromHeader(authHeader) match
-          case Right(t) => IO.pure(t)
-          case Left(err) => IO.raiseError(new Exception(err))
-        payload <- JwtService.validateToken(token).flatMap {
-          case Right(p) => IO.pure(p)
-          case Left(err) => IO.raiseError(new Exception(err))
-        }
-      yield AuthResponse(token, payload.userId, payload.username))
-        .map(authResponse => Right(authResponse))
-        .handleErrorWith { _ =>
-          IO.pure(Left((StatusCode.Unauthorized, ErrorResponse("UNAUTHORIZED", "Invalid or expired token"))))
-        }
+    refreshEndpoint.serverLogic { authHeaderOpt =>
+      authHeaderOpt match
+        case None =>
+          IO.pure(Left((StatusCode.BadRequest, ErrorResponse("BAD_REQUEST", "Authorization header is required"))))
+        case Some(authHeader) if authHeader.trim.isEmpty =>
+          IO.pure(Left((StatusCode.BadRequest, ErrorResponse("BAD_REQUEST", "Authorization header cannot be empty"))))
+        case Some(authHeader) =>
+          (for
+            token <- JwtService.getTokenFromHeader(authHeader) match
+              case Right(t) => IO.pure(t)
+              case Left(err) => IO.raiseError(new Exception(err))
+            payload <- JwtService.validateToken(token).flatMap {
+              case Right(p) => IO.pure(p)
+              case Left(err) => IO.raiseError(new Exception(err))
+            }
+          yield AuthResponse(token, payload.userId, payload.username))
+            .map(authResponse => Right(authResponse))
+            .handleErrorWith { _ =>
+              IO.pure(Left((StatusCode.Unauthorized, ErrorResponse("UNAUTHORIZED", "Invalid or expired token"))))
+            }
     }
 
   val all: List[ServerEndpoint[Any, IO]] = List(
