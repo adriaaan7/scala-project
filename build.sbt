@@ -17,6 +17,7 @@ libraryDependencies ++= Seq(
   // HTTP Server
   "org.http4s" %% "http4s-ember-server" % http4sVersion,
   "org.http4s" %% "http4s-dsl"          % http4sVersion,
+  "org.http4s" %% "http4s-cors"         % http4sVersion,
 
   // Doobie
   "org.tpolecat" %% "doobie-core"     % doobieVersion,
