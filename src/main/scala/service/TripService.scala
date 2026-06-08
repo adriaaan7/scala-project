@@ -13,6 +13,9 @@ object TripService:
   def listAllTrips(xa: HikariTransactor[IO]): IO[List[Trip]] =
     TripRepository.listAll.transact(xa)
 
+  def listTripsByUserId(userId: UUID, xa: HikariTransactor[IO]): IO[List[Trip]] =
+    TripRepository.findByOwnerId(userId).transact(xa)
+
   def createTrip(title: String, startDate: LocalDate, endDate: LocalDate, ownerId: UUID, xa: HikariTransactor[IO]): IO[Trip] =
     val trip = Trip(UUID.randomUUID(), title, startDate, endDate, ownerId)
     TripRepository.save(trip).transact(xa)

@@ -58,8 +58,8 @@ object TripRoutes:
       .tag("Trips")
       .serverLogic { (authHeader: String) =>
         extractUserId(authHeader).flatMap {
-          case Right(_) =>
-            TripService.listAllTrips(xa).map(trips => Right(trips))
+          case Right(userId) =>
+            TripService.listTripsByUserId(userId, xa).map(trips => Right(trips))
           case Left(error) =>
             IO.pure(Left((StatusCode.Unauthorized, ErrorResponse(error))))
         }
