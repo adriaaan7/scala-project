@@ -2,6 +2,8 @@ package domain
 
 import java.util.UUID
 import java.time.OffsetDateTime
+import io.circe.Codec
+import io.circe.generic.semiauto.*
 
 case class Place(
                   id: UUID,
@@ -13,3 +15,6 @@ case class Place(
                   startDate: OffsetDateTime,
                   endDate: OffsetDateTime
                 )
+
+object Place:
+  implicit val codec: Codec[Place] = deriveCodec
