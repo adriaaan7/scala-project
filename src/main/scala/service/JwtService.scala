@@ -33,7 +33,12 @@ object JwtService:
     IO.pure {
       Jwt.decode(token, secretKey, Seq(algorithm))
         .toEither
-        .left.map(_.getMessage)
+        .left.map { ex =>
+          val msg = Option(ex.getMessage).getOrElse(ex.getClass.getSimpleName).toLowerCase
+          if msg.contains("expired") then "Token has expired"
+          else if msg.contains("signature") then "Invalid token signature"
+          else "Invalid token"
+        }
         .flatMap { claim =>
           io.circe.parser.parse(claim.content) match
             case Right(json) =>
@@ -45,6 +50,9 @@ object JwtService:
     }
 
   def getTokenFromHeader(authHeader: String): Either[String, String] =
-    authHeader match
-      case s"Bearer $token" => Right(token.trim)
-      case _ => Left("Invalid authorization header format. Expected: Bearer <token>")
+    if authHeader == null || authHeader.trim.isEmpty then
+      Left("Invalid authorization header format. Expected: Bearer <token>")
+    else
+      authHeader match
+        case s"Bearer $token" => Right(token.trim)
+        case _ => Left("Invalid authorization header format. Expected: Bearer <token>")
