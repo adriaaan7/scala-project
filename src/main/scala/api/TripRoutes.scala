@@ -33,7 +33,7 @@ object TripRoutes:
     implicit val codec: Codec[ErrorResponse] = deriveCodec
 
   // Helper function to extract userId from Authorization header
-  private def extractUserId(authHeader: String): IO[Either[String, UUID]] =
+  def extractUserId(authHeader: String): IO[Either[String, UUID]] =
     JwtService.getTokenFromHeader(authHeader) match
       case Right(token) =>
         JwtService.validateToken(token).map { result =>
@@ -58,8 +58,8 @@ object TripRoutes:
       .tag("Trips")
       .serverLogic { (authHeader: String) =>
         extractUserId(authHeader).flatMap {
-          case Right(_) =>
-            TripService.listAllTrips(xa).map(trips => Right(trips))
+          case Right(userId) =>
+            TripService.listTripsByUserId(userId, xa).map(trips => Right(trips))
           case Left(error) =>
             IO.pure(Left((StatusCode.Unauthorized, ErrorResponse(error))))
         }
