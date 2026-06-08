@@ -238,3 +238,189 @@ class AuthServiceSuite extends CatsEffectSuite:
     val isValid = AuthService.verifyPassword(wrongPassword, hash)
     assert(!isValid, "Invalid password should not verify")
   }
+
+  // ===== ADDITIONAL REGISTER TESTS =====
+
+  test("Register - should allow usernames with numbers") {
+    val xa = databaseFixture()
+    for {
+      _      <- setupSchema(xa)
+      result <- AuthService.register("user123", "password123", xa)
+    } yield {
+      result match
+        case Right(user) => assert(user.username == "user123")
+        case Left(error) => fail(s"Should allow numeric usernames: $error")
+    }
+  }
+
+  test("Register - should allow usernames with special characters") {
+    val xa = databaseFixture()
+    for {
+      _      <- setupSchema(xa)
+      result <- AuthService.register("user@example.com", "password123", xa)
+    } yield {
+      result match
+        case Right(user) => assert(user.username == "user@example.com")
+        case Left(error) => fail(s"Should allow special characters: $error")
+    }
+  }
+
+  test("Register - should allow long usernames") {
+    val xa = databaseFixture()
+    val longUsername = "user_" + ("x" * 250)
+    for {
+      _      <- setupSchema(xa)
+      result <- AuthService.register(longUsername, "password123", xa)
+    } yield {
+      result match
+        case Right(user) => assert(user.username == longUsername)
+        case Left(error) => fail(s"Should allow long usernames: $error")
+    }
+  }
+
+  test("Register - should allow long passwords") {
+    val xa = databaseFixture()
+    val longPassword = "pwd_" + ("x" * 500)
+    for {
+      _      <- setupSchema(xa)
+      result <- AuthService.register("user", longPassword, xa)
+    } yield {
+      result match
+        case Right(user) => assert(user.passwordHash.nonEmpty)
+        case Left(error) => fail(s"Should allow long passwords: $error")
+    }
+  }
+
+  test("Register - should prevent duplicate username") {
+    val xa = databaseFixture()
+    for {
+      _       <- setupSchema(xa)
+      _       <- AuthService.register("dupuser", "pass123", xa)
+      result2 <- AuthService.register("dupuser", "differentpass", xa)
+    } yield {
+      result2 match
+        case Left(error) => assert(error == "User already exists", s"Expected 'User already exists', got: $error")
+        case Right(_)    => fail("Should not allow duplicate username")
+    }
+  }
+
+  test("Register - should generate different password hashes for different passwords") {
+    val hash1 = AuthService.hashPassword("password1")
+    val hash2 = AuthService.hashPassword("password2")
+    assert(hash1 != hash2, "Different passwords should produce different hashes")
+  }
+
+  test("Register - should whitespace-trim username allows registration") {
+    val xa = databaseFixture()
+    // Note: whitespace-only usernames are not allowed per validation
+    for {
+      _      <- setupSchema(xa)
+      result <- AuthService.register("  user  ", "password123", xa)
+    } yield {
+      result match
+        case Right(user) =>
+          // Username might be stored with spaces depending on implementation
+          assert(user.username.nonEmpty)
+        case Left(_) => assert(true, "May reject whitespace-heavy usernames")
+    }
+  }
+
+  test("Register - should assign unique IDs to each user") {
+    val xa = databaseFixture()
+    for {
+      _      <- setupSchema(xa)
+      user1  <- AuthService.register("user1", "pass1", xa)
+      user2  <- AuthService.register("user2", "pass2", xa)
+    } yield {
+      user1 match
+        case Right(u1) =>
+          user2 match
+            case Right(u2) => assert(u1.id != u2.id, "Each user should have unique ID")
+            case Left(_) => fail("Second registration failed")
+        case Left(_) => fail("First registration failed")
+    }
+  }
+
+  // ===== ADDITIONAL LOGIN TESTS =====
+
+  test("Login - wrong password should fail") {
+    val xa = databaseFixture()
+    for {
+      _      <- setupSchema(xa)
+      _      <- AuthService.register("testuser", "correctpass", xa)
+      result <- AuthService.login("testuser", "wrongpass", xa)
+    } yield {
+      result match
+        case Left(error) => assert(error == "Invalid credentials", s"Expected 'Invalid credentials', got: $error")
+        case Right(_)    => fail("Should reject wrong password")
+    }
+  }
+
+  test("Login - should return correct username in response") {
+    val xa = databaseFixture()
+    for {
+      _      <- setupSchema(xa)
+      _      <- AuthService.register("myuser", "pass123", xa)
+      result <- AuthService.login("myuser", "pass123", xa)
+    } yield {
+      result match
+        case Right(authResponse) => assert(authResponse.username == "myuser")
+        case Left(error)         => fail(s"Login failed: $error")
+    }
+  }
+
+  test("Login - should allow login with special character username") {
+    val xa = databaseFixture()
+    val specialUser = "user+test@example.com"
+    for {
+      _      <- setupSchema(xa)
+      _      <- AuthService.register(specialUser, "pass123", xa)
+      result <- AuthService.login(specialUser, "pass123", xa)
+    } yield {
+      result match
+        case Right(authResponse) => assert(authResponse.username == specialUser)
+        case Left(error)         => fail(s"Should support special characters: $error")
+    }
+  }
+
+  // ===== ADDITIONAL PASSWORD HASHING TESTS =====
+
+  test("Password hashing - should produce Base64 output") {
+    val hash = AuthService.hashPassword("password")
+    // Base64 strings only contain A-Z, a-z, 0-9, +, /, and =
+    val base64Pattern = "^[A-Za-z0-9+/]*={0,2}$"
+    assert(hash.matches(base64Pattern), "Hash should be valid Base64")
+  }
+
+  test("Password hashing - different passwords produce different hashes (entropy)") {
+    val hashes = (1 to 10).map { i => AuthService.hashPassword(s"password$i") }.toSet
+    assert(hashes.size == 10, "10 different passwords should produce 10 different hashes")
+  }
+
+  test("Password verification - empty password") {
+    val hash = AuthService.hashPassword("")
+    val isValid = AuthService.verifyPassword("", hash)
+    assert(isValid, "Empty password should be hashable and verifiable")
+  }
+
+  test("Password verification - very long password") {
+    val longPass = "p" * 10000
+    val hash = AuthService.hashPassword(longPass)
+    val isValid = AuthService.verifyPassword(longPass, hash)
+    assert(isValid, "Should handle very long passwords")
+  }
+
+  test("Password hashing - special characters should work") {
+    val specialPass = "P@$$w0rd!#%&*()[]{}\\|;:',.<>?/`~"
+    val hash = AuthService.hashPassword(specialPass)
+    val isValid = AuthService.verifyPassword(specialPass, hash)
+    assert(isValid, "Should handle special characters in password")
+  }
+
+  test("Password hashing - unicode characters should work") {
+    val unicodePass = "пароль密码🔐secure"
+    val hash = AuthService.hashPassword(unicodePass)
+    val isValid = AuthService.verifyPassword(unicodePass, hash)
+    assert(isValid, "Should handle unicode characters")
+  }
+

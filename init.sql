@@ -23,3 +23,18 @@ CREATE TABLE IF NOT EXISTS trips (
 
 CREATE INDEX IF NOT EXISTS idx_trips_owner_id ON trips(owner_id);
 CREATE INDEX IF NOT EXISTS idx_trips_created_at ON trips(created_at DESC);
+
+CREATE TABLE places (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    trip_id UUID NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    lat NUMERIC(10, 7) NOT NULL,
+    lng NUMERIC(10, 7) NOT NULL,
+    start_date TIMESTAMP WITH TIME ZONE NOT NULL,
+    end_date TIMESTAMP WITH TIME ZONE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_places_trip_id ON places(trip_id);
+CREATE INDEX IF NOT EXISTS idx_places_start_date ON places(start_date);

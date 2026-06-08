@@ -11,7 +11,8 @@ import java.time.LocalDate
 import io.circe.Codec
 import io.circe.generic.semiauto.*
 import sttp.model.StatusCode
-import service.{TripService, JwtService}
+import service.{TripService, JwtService, PlaceService}
+import domain.Place
 import doobie.hikari.HikariTransactor
 import doobie.implicits.*
 import doobie.postgres.implicits.*
@@ -31,6 +32,18 @@ object TripRoutes:
   case class ErrorResponse(message: String)
   object ErrorResponse:
     implicit val codec: Codec[ErrorResponse] = deriveCodec
+
+  case class TripDetails(
+    id: UUID,
+    title: String,
+    startDate: LocalDate,
+    endDate: LocalDate,
+    ownerId: UUID,
+    isOwner: Boolean,
+    places: List[Place]
+  )
+  object TripDetails:
+    implicit val codec: Codec[TripDetails] = deriveCodec
 
   // Helper function to extract userId from Authorization header
   private def extractUserId(authHeader: String): IO[Either[String, UUID]] =
@@ -91,17 +104,29 @@ object TripRoutes:
       .get
       .in("trips" / path[UUID]("tripId"))
       .in(header[String]("Authorization"))
-      .out(jsonBody[Trip])
+      .out(jsonBody[TripDetails])
       .errorOut(statusCode.and(jsonBody[ErrorResponse]))
       .tag("Trips")
       .serverLogic { case (tripId: UUID, authHeader: String) =>
         extractUserId(authHeader).flatMap {
-          case Right(_) =>
-            TripService.getTripById(tripId, xa)
-              .map {
-                case Some(trip) => Right(trip)
-                case None => Left((StatusCode.NotFound, ErrorResponse("Trip not found")))
-              }
+          case Right(userId) =>
+            TripService.getTripById(tripId, xa).flatMap {
+              case Some(trip) =>
+                PlaceService.getPlacesByTripId(tripId, xa).map { places =>
+                  val tripDetails = TripDetails(
+                    id = trip.id,
+                    title = trip.title,
+                    startDate = trip.startDate,
+                    endDate = trip.endDate,
+                    ownerId = trip.ownerId,
+                    isOwner = userId == trip.ownerId,
+                    places = places
+                  )
+                  Right(tripDetails)
+                }
+              case None =>
+                IO.pure(Left((StatusCode.NotFound, ErrorResponse("Trip not found"))))
+            }
           case Left(error) =>
             IO.pure(Left((StatusCode.Unauthorized, ErrorResponse(error))))
         }
