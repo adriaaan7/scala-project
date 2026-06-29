@@ -24,12 +24,17 @@ object InvitationService:
           case None =>
             IO.pure(Left("User not found"))
           case Some(receiver) =>
-            InvitationRepository.existsByTripIdAndReceiverId(tripId, receiver.id).transact(xa).flatMap {
+            TripRepository.isOwnerOrParticipant(tripId, receiver.id).transact(xa).flatMap {
               case true =>
-                IO.pure(Left("Invitation already sent to this user"))
+                IO.pure(Left("User is already a member of this trip"))
               case false =>
-                val invitation = Invitation(UUID.randomUUID(), tripId, senderUserId, receiver.id, InvitationStatus.Pending)
-                InvitationRepository.save(invitation).transact(xa).map(inv => Right(inv))
+                InvitationRepository.existsByTripIdAndReceiverId(tripId, receiver.id).transact(xa).flatMap {
+                  case true =>
+                    IO.pure(Left("Invitation already sent to this user"))
+                  case false =>
+                    val invitation = Invitation(UUID.randomUUID(), tripId, senderUserId, receiver.id, InvitationStatus.Pending)
+                    InvitationRepository.save(invitation).transact(xa).map(inv => Right(inv))
+                }
             }
         }
     }
@@ -44,6 +49,8 @@ object InvitationService:
         IO.pure(Left("Invitation not found"))
       case Some(inv) if inv.receiverId != respondingUserId =>
         IO.pure(Left("Not authorized to respond to this invitation"))
+      case Some(inv) if inv.status != InvitationStatus.Pending =>
+        IO.pure(Left("This invitation has already been responded to"))
       case Some(inv) =>
         val updateOp: ConnectionIO[Unit] = for
           _ <- InvitationRepository.updateStatus(invitationId, status)

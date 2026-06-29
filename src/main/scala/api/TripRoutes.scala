@@ -13,6 +13,7 @@ import io.circe.generic.semiauto.*
 import sttp.model.StatusCode
 import service.{TripService, JwtService, PlaceService}
 import domain.Place
+import repository.TripRepository
 import doobie.hikari.HikariTransactor
 import doobie.implicits.*
 import doobie.postgres.implicits.*
@@ -111,21 +112,17 @@ object TripRoutes:
         extractUserId(authHeader).flatMap {
           case Right(userId) =>
             TripService.getTripById(tripId, xa).flatMap {
-              case Some(trip) =>
-                PlaceService.getPlacesByTripId(tripId, xa).map { places =>
-                  val tripDetails = TripDetails(
-                    id = trip.id,
-                    title = trip.title,
-                    startDate = trip.startDate,
-                    endDate = trip.endDate,
-                    ownerId = trip.ownerId,
-                    isOwner = userId == trip.ownerId,
-                    places = places
-                  )
-                  Right(tripDetails)
-                }
               case None =>
                 IO.pure(Left((StatusCode.NotFound, ErrorResponse("Trip not found"))))
+              case Some(trip) =>
+                TripRepository.isOwnerOrParticipant(tripId, userId).transact(xa).flatMap { hasAccess =>
+                  if !hasAccess then
+                    IO.pure(Left((StatusCode.Forbidden, ErrorResponse("Access denied"))))
+                  else
+                    PlaceService.getPlacesByTripId(tripId, xa).map { places =>
+                      Right(TripDetails(trip.id, trip.title, trip.startDate, trip.endDate, trip.ownerId, userId == trip.ownerId, places))
+                    }
+                }
             }
           case Left(error) =>
             IO.pure(Left((StatusCode.Unauthorized, ErrorResponse(error))))
@@ -144,9 +141,15 @@ object TripRoutes:
       .tag("Trips")
       .serverLogic { case (tripId: UUID, authHeader: String, req: UpdateTripRequest) =>
         extractUserId(authHeader).flatMap {
-          case Right(_) =>
-            TripService.updateTrip(tripId, req.title, req.startDate, req.endDate, xa)
-              .map(_ => Right(()))
+          case Right(userId) =>
+            TripService.getTripById(tripId, xa).flatMap {
+              case None =>
+                IO.pure(Left((StatusCode.NotFound, ErrorResponse("Trip not found"))))
+              case Some(trip) if trip.ownerId != userId =>
+                IO.pure(Left((StatusCode.Forbidden, ErrorResponse("Only the trip owner can edit this trip"))))
+              case Some(_) =>
+                TripService.updateTrip(tripId, req.title, req.startDate, req.endDate, xa).map(_ => Right(()))
+            }
           case Left(error) =>
             IO.pure(Left((StatusCode.Unauthorized, ErrorResponse(error))))
         }
@@ -163,9 +166,15 @@ object TripRoutes:
       .tag("Trips")
       .serverLogic { case (tripId: UUID, authHeader: String) =>
         extractUserId(authHeader).flatMap {
-          case Right(_) =>
-            TripService.deleteTrip(tripId, xa)
-              .map(_ => Right(()))
+          case Right(userId) =>
+            TripService.getTripById(tripId, xa).flatMap {
+              case None =>
+                IO.pure(Left((StatusCode.NotFound, ErrorResponse("Trip not found"))))
+              case Some(trip) if trip.ownerId != userId =>
+                IO.pure(Left((StatusCode.Forbidden, ErrorResponse("Only the trip owner can delete this trip"))))
+              case Some(_) =>
+                TripService.deleteTrip(tripId, xa).map(_ => Right(()))
+            }
           case Left(error) =>
             IO.pure(Left((StatusCode.Unauthorized, ErrorResponse(error))))
         }

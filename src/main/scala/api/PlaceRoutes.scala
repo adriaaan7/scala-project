@@ -4,8 +4,10 @@ import cats.effect.IO
 import cats.implicits.*
 import domain.Place
 import doobie.hikari.HikariTransactor
+import doobie.implicits.*
 import io.circe.Codec
 import io.circe.generic.semiauto.*
+import repository.TripRepository
 import service.{JwtService, PlaceService}
 import sttp.model.StatusCode
 import sttp.tapir.*
@@ -71,9 +73,15 @@ object PlaceRoutes:
       .tag("Places")
       .serverLogic { case (tripId: UUID, authHeader: String, req: CreatePlaceRequest) =>
         extractUserId(authHeader).flatMap {
-          case Right(_) =>
-            PlaceService.createPlace(tripId, req.name, req.description, req.lat, req.lng, req.startDate, req.endDate, xa)
-              .map(place => Right(place))
+          case Right(userId) =>
+            TripRepository.isOwnerOrParticipant(tripId, userId).transact(xa).flatMap { hasAccess =>
+              if !hasAccess then IO.pure(Left((StatusCode.Forbidden, ErrorResponse("Access denied"))))
+              else
+                PlaceService.createPlace(tripId, req.name, req.description, req.lat, req.lng, req.startDate, req.endDate, xa).map {
+                  case Right(place) => Right(place)
+                  case Left(error)  => Left((StatusCode.Conflict, ErrorResponse(error)))
+                }
+            }
           case Left(error) =>
             IO.pure(Left((StatusCode.Unauthorized, ErrorResponse(error))))
         }
@@ -91,11 +99,15 @@ object PlaceRoutes:
       .tag("Places")
       .serverLogic { case (tripId: UUID, authHeader: String, newPlaces: List[Place]) =>
         extractUserId(authHeader).flatMap {
-          case Right(_) =>
-            PlaceService.deletePlacesByTripId(tripId, xa).flatMap { _ =>
-              newPlaces.foldM(()) { (_, place) =>
-                PlaceService.createPlace(tripId, place.name, place.description, place.lat, place.lng, place.startDate, place.endDate, xa).void
-              }.map(_ => Right(()))
+          case Right(userId) =>
+            TripRepository.isOwnerOrParticipant(tripId, userId).transact(xa).flatMap { hasAccess =>
+              if !hasAccess then IO.pure(Left((StatusCode.Forbidden, ErrorResponse("Access denied"))))
+              else
+                PlaceService.deletePlacesByTripId(tripId, xa).flatMap { _ =>
+                  newPlaces.foldM(()) { (_, place) =>
+                    PlaceService.createPlace(tripId, place.name, place.description, place.lat, place.lng, place.startDate, place.endDate, xa).void
+                  }.map(_ => Right(()))
+                }
             }
           case Left(error) =>
             IO.pure(Left((StatusCode.Unauthorized, ErrorResponse(error))))
@@ -114,9 +126,15 @@ object PlaceRoutes:
       .tag("Places")
       .serverLogic { case (tripId: UUID, placeId: UUID, authHeader: String, req: UpdatePlaceRequest) =>
         extractUserId(authHeader).flatMap {
-          case Right(_) =>
-            PlaceService.updatePlace(placeId, req.name, req.description, req.lat, req.lng, req.startDate, req.endDate, xa)
-              .map(_ => Right(()))
+          case Right(userId) =>
+            TripRepository.isOwnerOrParticipant(tripId, userId).transact(xa).flatMap { hasAccess =>
+              if !hasAccess then IO.pure(Left((StatusCode.Forbidden, ErrorResponse("Access denied"))))
+              else
+                PlaceService.updatePlace(placeId, req.name, req.description, req.lat, req.lng, req.startDate, req.endDate, xa).map {
+                  case Right(_)    => Right(())
+                  case Left(error) => Left((StatusCode.Conflict, ErrorResponse(error)))
+                }
+            }
           case Left(error) =>
             IO.pure(Left((StatusCode.Unauthorized, ErrorResponse(error))))
         }
@@ -133,9 +151,11 @@ object PlaceRoutes:
       .tag("Places")
       .serverLogic { case (tripId: UUID, placeId: UUID, authHeader: String) =>
         extractUserId(authHeader).flatMap {
-          case Right(_) =>
-            PlaceService.deletePlace(placeId, xa)
-              .map(_ => Right(()))
+          case Right(userId) =>
+            TripRepository.isOwnerOrParticipant(tripId, userId).transact(xa).flatMap { hasAccess =>
+              if !hasAccess then IO.pure(Left((StatusCode.Forbidden, ErrorResponse("Access denied"))))
+              else PlaceService.deletePlace(placeId, xa).map(_ => Right(()))
+            }
           case Left(error) =>
             IO.pure(Left((StatusCode.Unauthorized, ErrorResponse(error))))
         }
@@ -152,8 +172,11 @@ object PlaceRoutes:
       .tag("Places")
       .serverLogic { case (tripId: UUID, authHeader: String) =>
         extractUserId(authHeader).flatMap {
-          case Right(_) =>
-            PlaceService.getPlacesByTripId(tripId, xa).map(places => Right(places))
+          case Right(userId) =>
+            TripRepository.isOwnerOrParticipant(tripId, userId).transact(xa).flatMap { hasAccess =>
+              if !hasAccess then IO.pure(Left((StatusCode.Forbidden, ErrorResponse("Access denied"))))
+              else PlaceService.getPlacesByTripId(tripId, xa).map(places => Right(places))
+            }
           case Left(error) =>
             IO.pure(Left((StatusCode.Unauthorized, ErrorResponse(error))))
         }

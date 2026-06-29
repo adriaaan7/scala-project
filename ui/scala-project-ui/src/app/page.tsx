@@ -1,15 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Map, Users, Calendar, ArrowRight } from "lucide-react";
 import Image from "next/image";
-// ZAKTUALIZOWANE ŚCIEŻKI:
 import AuthModal from "../components/AuthModal";
 import CursorTrail from "../components/CursorTrail";
+import { useAuth } from "../contexts/AuthContext";
 
 export default function Home() {
+  const auth = useAuth();
+  const router = useRouter();
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authModalView, setAuthModalView] = useState<"login" | "register">("login");
+
+  useEffect(() => {
+    if (auth.user) router.replace("/dashboard");
+  }, [auth.user, router]);
 
   const openAuthModal = (view: "login" | "register") => {
     setAuthModalView(view);

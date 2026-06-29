@@ -57,6 +57,15 @@ object TripRepository:
       .run
       .map(_ => ())
 
+  def isOwnerOrParticipant(tripId: UUID, userId: UUID): ConnectionIO[Boolean] =
+    sql"""
+      SELECT EXISTS (
+        SELECT 1 FROM trips WHERE id = $tripId AND owner_id = $userId
+        UNION ALL
+        SELECT 1 FROM trip_participants WHERE trip_id = $tripId AND user_id = $userId
+      )
+    """.query[Boolean].unique
+
   def findByOwnerOrParticipant(userId: UUID): ConnectionIO[List[Trip]] =
     sql"""
       SELECT id, title, start_date, end_date, owner_id FROM trips

@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, FormEvent, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { X, Eye, EyeOff } from "lucide-react";
-// ZAKTUALIZOWANA ŚCIEŻKA:
 import { authService } from "../services/api";
+import { useAuth } from "../contexts/AuthContext";
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -12,6 +13,8 @@ interface AuthModalProps {
 }
 
 export default function AuthModal({ isOpen, onClose, initialView }: AuthModalProps) {
+  const auth = useAuth();
+  const router = useRouter();
   const [isLoginView, setIsLoginView] = useState(initialView === "login");
   
   const [username, setUsername] = useState("");
@@ -50,15 +53,15 @@ export default function AuthModal({ isOpen, onClose, initialView }: AuthModalPro
 
     try {
       if (isLoginView) {
-        await authService.login(username, password);
-        console.log("Success (Logged in)");
+        const data = await authService.login(username, password);
+        auth.login(data);
+        onClose();
+        router.push("/dashboard");
       } else {
-        const data = await authService.register(username, password);
-        console.log("Success (Registered):", data);
+        await authService.register(username, password);
         switchView();
-        return; 
+        return;
       }
-      onClose();
     } catch (err: any) {
       setError(err.message || "Something went wrong.");
     } finally {
