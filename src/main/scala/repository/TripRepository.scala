@@ -57,3 +57,15 @@ object TripRepository:
       .run
       .map(_ => ())
 
+  def findByOwnerOrParticipant(userId: UUID): ConnectionIO[List[Trip]] =
+    sql"""
+      SELECT id, title, start_date, end_date, owner_id FROM trips
+      WHERE owner_id = $userId
+         OR id IN (SELECT trip_id FROM trip_participants WHERE user_id = $userId)
+    """
+      .query[(UUID, String, LocalDate, LocalDate, UUID)]
+      .map { case (id, title, startDate, endDate, ownerId) =>
+        Trip(id, title, startDate, endDate, ownerId)
+      }
+      .to[List]
+

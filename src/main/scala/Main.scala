@@ -16,8 +16,9 @@ object Main extends IOApp.Simple:
       val tripEndpoints = new TripEndpoint(xa)
       val authEndpoints = new AuthEndpoint(xa)
       val placeEndpoints = new PlaceEndpoint(xa)
+      val invitationEndpoints = new InvitationEndpoint(xa)
 
-      val allEndpoints = authEndpoints.all ::: tripEndpoints.all ::: placeEndpoints.all
+      val allEndpoints = authEndpoints.all ::: tripEndpoints.all ::: placeEndpoints.all ::: invitationEndpoints.all
 
       val routes = HttpRouter.makeRoutes(allEndpoints)
 
